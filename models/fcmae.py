@@ -149,20 +149,6 @@ class FCMAE(nn.Module):
                     in_features=decoder_embed_dim, out_features=self.out_chans[modality]
                 )
 
-        #修改的代码都放在这
-        # self.latent_decoder = [nn.Sequential(*decoder) for _ in range(3)]
-        # self.latent_pred = nn.ModuleList([nn.Conv2d(
-        #             in_channels=decoder_embed_dim,
-        #             out_channels=768,
-        #             kernel_size=1,
-        #         ) for _ in range(3)])
-        # self.latent_mask_token = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
-        # self.latent_mask_token_list = [self.latent_mask_token for i in range(3)]
-        # self.latent_proj = nn.ModuleList([nn.Conv2d(
-        #     in_channels=input_dim, out_channels=decoder_embed_dim, kernel_size=3, stride=2, padding=1
-        # ) for input_dim in dims[:-1]])
-        # self.latent_pool=nn.AdaptiveAvgPool2d((7, 7))
-
 
         self.apply(self._init_weights)
         self.random_crop = RandomCrop((img_size, img_size))
@@ -259,8 +245,8 @@ class FCMAE(nn.Module):
         # generate random masks
         mask = self.gen_random_mask(imgs, mask_ratio)
         # encoding
-        x, latent= self.encoder(imgs, mask)
-        return x, mask, latent
+        x = self.encoder(imgs, mask)
+        return x, mask
 
     def forward_decoder(self, x: Tensor, mask: Tensor) -> Dict[AnyStr, Tensor]:
         pred = {}
@@ -428,49 +414,18 @@ class FCMAE(nn.Module):
             return loss_combined, loss_dict, None, None
 
 
-    def latent_loss(self, img:Tensor, latent: list, mask: Tensor):
-        latent.pop(-1)
-        latent = [self.latent_proj[i](x) for i, x in zip(range(len(self.latent_proj)), latent)]
-        latent = [self.latent_pool(x) for x in latent] # 每个stage都调整到7*7
-        latent_out = []
-        mask_temp = mask
-        for i in range(3):   # 解码
-            x = latent[i]
-            n, c, h, w = x.shape
-            mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)
-            mask_token = self.latent_mask_token_list[i].repeat(x.shape[0], 1, x.shape[2], x.shape[3])
-            x = x * (1.0 - mask) + mask_token * mask
-            x = self.latent_decoder[i](x)
-            latent_out.append(self.latent_pred[i](x))
-
-        loss_list = []
-        mask = mask_temp
-        for i in range(3):  # 计算损失
-            pred = latent_out[i]
-
-            target = self.patchify(img, "sentinel2")
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.0e-6) ** 0.5
-
-            if len(pred.shape) == 4:
-                n, c, _, _ = pred.shape  # [N, C, H, W]
-                pred = pred.reshape(n, c, -1)
-                pred = torch.einsum("ncl->nlc", pred)
-
-            loss = (pred - target) ** 2  # using mean squared error
-            nan_mask = torch.isnan(loss)
-            count = torch.count_nonzero(~nan_mask, dim=-1)
-            loss[nan_mask] = 0
-            loss = loss.sum(dim=-1) / count
-            nan_mask = torch.isnan(loss * mask)
-            tmp = loss * mask
-            tmp[nan_mask] = 0
-            sum_ = tmp.sum()
-            count = torch.count_nonzero(tmp)
-            loss = sum_ / count  # mean loss on removed patches
-            loss_list.append(loss)
-        return sum(loss_list)
+    
+    def new_forward_encoder(self, imgs_dict: Dict[AnyStr, Tensor], mask_ratio: float):
+        mask = self.gen_random_mask(imgs_dict["sentinel2"], mask_ratio)
+        x1 = self.encoder(imgs_dict["sentinel2"], mask)
+        imgs = imgs_dict["sentinel1"]
+        x2 = self.encoder(torch.cat((imgs, imgs[torch.randperm(imgs.size(0))[:4]]), 0), mask)  # sentinel1 随机选择4个通道拼接
+        x3 = self.encoder(imgs_dict["aster"].repeat(4, 1, 1), mask)
+        x4 = self.encoder(imgs_dict["canopy_height_eth"].repeat(4, 1, 1), mask)
+        x5 = self.encoder(imgs_dict["dynamic_world"].repeat(12, 1, 1), mask)
+        x6 = self.encoder(imgs_dict["esa_worldcover"].repeat(12, 1, 1), mask)
+        x = x1 + x2 + x3 + x4 + x5 + x6
+        return x, mask
 
 
     def forward(
@@ -501,13 +456,11 @@ class FCMAE(nn.Module):
                     imgs_dict[modality], nan=0.0, posinf=0.0, neginf=0.0
                 )
 
-        x, mask, latent = self.forward_encoder(imgs, mask_ratio)
-        # latent_loss = self.latent_loss(imgs, latent, mask)
+        x, mask = self.new_forward_encoder(imgs_dict, mask_ratio)
         pred = self.forward_decoder(x, mask)
         loss, loss_dict, log_vars, normalized_loss_list = self.forward_loss(
             imgs_dict, pred, mask
         )
-        # loss += latent_loss
         return loss, pred, mask, loss_dict, log_vars, normalized_loss_list
 
 
