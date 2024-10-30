@@ -1,0 +1,33 @@
+{
+  "m-eurosat": [
+    "02 - Blue",
+    "03 - Green",
+    "04 - Red"
+  ],
+  "m-so2sat": [
+    "02 - Blue",
+    "03 - Green",
+    "04 - Red"
+  ],
+  "m-brick-kiln": [
+    "04 - Red",
+    "03 - Green",
+    "02 - Blue"
+  ],
+  "m-bigearthnet": [
+    "02 - Blue",
+    "03 - Green",
+    "04 - Red"
+  ],
+  "m-cashew-plant": [
+    "02 - Blue",
+    "03 - Green",
+    "04 - Red"
+  ],
+  "m-SA-crop-type": [
+    "02 - Blue",
+    "03 - Green",
+    "04 - Red"
+  ]
+}
+
