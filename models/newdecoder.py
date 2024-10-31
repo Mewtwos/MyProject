@@ -3,13 +3,12 @@ from torch import nn
 import torch
 from .pos_embed import get_2d_sincos_pos_embed
 
-
 class MAE_Decoder(nn.Module):
-    def __init__(self, inp_dim, embed_dim=256, out_dim=27, num_patches=49, depth=1, num_heads=8, mlp_ratio=4., qkv_bias=False, norm_layer=nn.LayerNorm):
+    def __init__(self, inp_dim, embed_dim=256, num_patches=49, depth=1, num_heads=8, mlp_ratio=4., qkv_bias=False, norm_layer=nn.LayerNorm):
         super().__init__()
         self.num_patches = num_patches
         self.embed = nn.Linear(inp_dim, embed_dim, bias=True)
-        self.pos_embed = nn.Parameter(torch.zeros(1, 1+self.num_patches, embed_dim), requires_grad=False)  # fixed sin-cos embedding
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim), requires_grad=False)  # fixed sin-cos embedding
         self.blocks = nn.ModuleList([
             Block(embed_dim, num_heads, mlp_ratio, qkv_bias=qkv_bias, norm_layer=norm_layer) for _ in range(depth)])
         self.norm = norm_layer(embed_dim)
@@ -18,7 +17,7 @@ class MAE_Decoder(nn.Module):
 
     def initialize_weights(self):
         # initialize position embedding
-        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.num_patches**.5), cls_token=True)
+        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.num_patches**.5))
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         # initialize nn.Linear and nn.LayerNorm
@@ -48,6 +47,6 @@ class MAE_Decoder(nn.Module):
 
         # predictor projection
         H = W = int(self.num_patches**0.5)
-        x = x[:, 1:].transpose(1, 2).reshape(x.size(0), -1, H, W) # [b, 256, patch_size, patch_size]
+        x = x.transpose(1, 2).reshape(x.size(0), -1, H, W) # [b, embed_dim, patch_size, patch_size]
 
         return x

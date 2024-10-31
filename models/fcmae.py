@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 from argparse import Namespace
+from functools import partial
 from typing import Tuple, Dict, AnyStr
 
 import torch
@@ -33,7 +34,7 @@ class FCMAE(nn.Module):
         depths: list[int] = None,
         dims: list[int] = None,
         decoder_depth: int = 1,
-        decoder_embed_dim: int = 512,
+        decoder_embed_dim: int = 320,
         patch_size: float = 16,
         mask_ratio: float = 0.6,
         norm_pix_loss: bool = False,
@@ -110,17 +111,17 @@ class FCMAE(nn.Module):
                 img_size=img_size,
                 use_orig_stem=args.use_orig_stem,
             )
-        self.proj = nn.Conv2d(
-            in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
-        )
+        # self.proj = nn.Conv2d(
+        #     in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
+        # )
 
         # mask tokens
         self.mask_token = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
-        decoder = [
-            Block(dim=decoder_embed_dim, drop_path=0.0) for _ in range(decoder_depth)
-        ]
+        # decoder = [
+        #     Block(dim=decoder_embed_dim, drop_path=0.0) for _ in range(decoder_depth)
+        # ]
         # creating a decoder for each modality
-        self.decoder_dict = nn.ModuleDict()
+        # self.decoder_dict = nn.ModuleDict()
         self.pred_dict = nn.ModuleDict()
         for modality in self.args.out_modalities.keys():
             if modality in [
@@ -133,35 +134,27 @@ class FCMAE(nn.Module):
                 "IMNET",
             ]:
                 # all the pixel level modalities
-                self.decoder_dict[modality] = nn.Sequential(*decoder)
+                # self.decoder_dict[modality] = nn.Sequential(*decoder)
                 self.pred_dict[modality] = nn.Conv2d(
-                    in_channels=decoder_embed_dim,
+                    in_channels=256,
                     out_channels=patch_size**2 * self.out_chans[modality],
                     kernel_size=1,
                 )
             elif modality in ["biome", "eco_region", "lat", "lon", "month", "era5"]:
                 # all the non-pixel level modalities along with a global average pooling
-                self.decoder_dict[modality] = nn.Sequential(*decoder)
+                # self.decoder_dict[modality] = nn.Sequential(*decoder)
                 self.layer_norm_tmp = LayerNorm(
-                    decoder_embed_dim, eps=1e-6, data_format="channels_first"
+                    256, eps=1e-6, data_format="channels_first"
                 )
                 self.pred_dict[modality] = nn.Linear(
-                    in_features=decoder_embed_dim, out_features=self.out_chans[modality]
+                    in_features=256, out_features=self.out_chans[modality]
                 )
 
         #修改的代码都放在这
-        new_decoder = MAE_Decoder(inp_dim=512, embed_dim=256, out_dim=27, num_patches=49, norm_layer=partial(nn.LayerNorm, eps=1e-6))
+        new_decoder = MAE_Decoder(inp_dim=self.decoder_embed_dim, embed_dim=256, num_patches=49, norm_layer=partial(nn.LayerNorm, eps=1e-6))
         self.new_decoder_dict = nn.ModuleDict()
         for modality in self.args.out_modalities.keys():
-            if modality in [
-                "sentinel2",
-                "sentinel1",
-                "aster",
-                "canopy_height_eth",
-                "dynamic_world",
-                "esa_worldcover",
-            ]:
-                self.new_decoder_dict[modality]=new_decoder
+            self.new_decoder_dict[modality]=new_decoder
 
         self.apply(self._init_weights)
         self.random_crop = RandomCrop((img_size, img_size))
@@ -186,11 +179,10 @@ class FCMAE(nn.Module):
             nn.init.constant_(m.weight, 1.0)
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=0.02)
-            nn.init.constant_(m.bias, 0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
         if hasattr(self, "mask_token"):   
             torch.nn.init.normal_(self.mask_token, std=0.02)
-        if hasattr(self, "latent_mask_token"):   
-            torch.nn.init.normal_(self.latent_mask_token, std=0.02)
 
     def patchify(self, imgs: Tensor, modality: str) -> Tensor:
         """
@@ -263,7 +255,7 @@ class FCMAE(nn.Module):
 
     def forward_decoder(self, x: Tensor, mask: Tensor) -> Dict[AnyStr, Tensor]:
         pred = {}
-        x = self.proj(x)
+        # x = self.proj(x)
         n, c, h, w = x.shape
         mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)       
         mask_token = self.mask_token.repeat(x.shape[0], 1, x.shape[2], x.shape[3])# 可学习参数，用于填补空缺
@@ -428,19 +420,19 @@ class FCMAE(nn.Module):
 
 
     def new_forward_decoder(self, x:Tensor, mask: Tensor):
-        pred = {}
-        x = self.proj(x)
-        n, c, h, w = x.shape
-        mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)       
+        pred = {}  # input x = [b, 320, 7, 7]
+        # x = self.proj(x)   # x = [b, 512, 7, 7]
+        n, c, h, w = x.shape  # mask [b, 49]
+        dim = self.decoder_embed_dim
+        mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)  # [b, 1, 7, 7]     
         mask_token = self.mask_token.repeat(x.shape[0], 1, x.shape[2], x.shape[3])# 可学习参数，用于填补空缺
         x = x * (1.0 - mask) + mask_token * mask
         for modalities in self.args.out_modalities.keys():
+            x_ = x.view(x.shape[0], self.decoder_embed_dim, -1).permute(0, 2, 1) 
+            x_ = self.new_decoder_dict[modalities](x_)  # [b, 256, 7, 7]
             if modalities in ["biome", "eco_region", "lat", "lon", "month", "era5"]:
-                x_ = self.decoder_dict[modalities](x)
                 x_ = self.layer_norm_tmp(x_)
                 x_ = x_.mean(dim=[-2, -1])
-            else:
-                x_ = self.new_decoder_dict[modalities](x)
             pred[modalities] = self.pred_dict[modalities](x_)
         return pred
 
