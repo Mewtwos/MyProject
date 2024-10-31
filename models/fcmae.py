@@ -419,11 +419,12 @@ class FCMAE(nn.Module):
         mask = self.gen_random_mask(imgs_dict["sentinel2"], mask_ratio)
         x1 = self.encoder(imgs_dict["sentinel2"], mask)
         imgs = imgs_dict["sentinel1"]
-        x2 = self.encoder(torch.cat((imgs, imgs[torch.randperm(imgs.size(0))[:4]]), 0), mask)  # sentinel1 随机选择4个通道拼接
-        x3 = self.encoder(imgs_dict["aster"].repeat(4, 1, 1), mask)
-        x4 = self.encoder(imgs_dict["canopy_height_eth"].repeat(4, 1, 1), mask)
-        x5 = self.encoder(imgs_dict["dynamic_world"].repeat(12, 1, 1), mask)
-        x6 = self.encoder(imgs_dict["esa_worldcover"].repeat(12, 1, 1), mask)
+        y = torch.cat((imgs, imgs[:,torch.randperm(imgs.size(1))[:4]]), 1)
+        x2 = self.encoder(y, mask)  # sentinel1 随机选择4个通道拼接
+        x3 = self.encoder(imgs_dict["aster"].repeat(1, 6, 1, 1), mask)
+        x4 = self.encoder(imgs_dict["canopy_height_eth"].repeat(1, 6, 1, 1), mask)
+        x5 = self.encoder(imgs_dict["dynamic_world"].repeat(1, 12, 1, 1).type_as(x1), mask)
+        x6 = self.encoder(imgs_dict["esa_worldcover"].repeat(1, 12, 1, 1).type_as(x1), mask)
         x = x1 + x2 + x3 + x4 + x5 + x6
         return x, mask
 
@@ -444,7 +445,8 @@ class FCMAE(nn.Module):
 
         # here imgs_dict is a dictionary with every modality, we set imgs to be the input which in this case
         # is always sentinel2.
-        imgs = imgs_dict["sentinel2"]
+
+        # imgs = imgs_dict["sentinel2"]
 
         # convert nan to 0 for "sentinel2", "sentinel1", "aster", "canopy_height_eth".
         # This is done since the data is normalized to have a mean of 0 and std of 1. hence
