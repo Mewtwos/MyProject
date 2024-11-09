@@ -1,2 +1,5 @@
 __pycache__/
 models/__pycache__
+results/
+test_scores/
+wandb/

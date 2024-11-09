@@ -719,7 +719,7 @@ def main(args: argparse.Namespace):
                     logging_text += f"{k} - {v:.3f} "
                     metric_key = k
             logging_text += f" on {val_samples} test samples"   
-
+            metric_key="Jaccard"
             if max_accuracy < test_stats[metric_key]:
                 max_accuracy = test_stats[metric_key]
                 if args.output_dir and args.save_ckpt:
@@ -800,7 +800,7 @@ def main(args: argparse.Namespace):
         if task.label_type.__class__ != SegmentationClasses:
             ckpt_file = 'checkpoint-99.pth'
         else:
-            ckpt_file = 'checkpoint-199.pth'
+            ckpt_file = 'checkpoint-best.pth'
 
         checkpoint = torch.load(
             os.path.join(args.output_dir, ckpt_file), map_location="cpu"
