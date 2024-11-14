@@ -364,7 +364,7 @@ def main(args):
                     loss_scaler=loss_scaler,
                     epoch=epoch,
                 )
-
+        torch.cuda.empty_cache() #防止爆显存
         log_stats = {
             **{f"train_{k}": v for k, v in train_stats.items()},
             "epoch": epoch,

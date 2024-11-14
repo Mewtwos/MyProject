@@ -91,6 +91,14 @@ class MMEarthDataset(Dataset):
             else:
                 modality_ = modality
 
+            # 使用归一化的均值替换零值
+            if modality == "canopy_height_eth":
+                means = np.array(self.norm_stats[modality]["mean"])[modality_idx]
+                for i in range(data.shape[0]):  # 对每个通道
+                    channel_data = data[i]
+                    # 将所有零值替换为对应通道的归一化均值
+                    channel_data[channel_data == 0] = means[i]
+
             if modality not in [
                 "biome",
                 "eco_region",
@@ -126,12 +134,19 @@ class MMEarthDataset(Dataset):
                 # for any value greater than 10, we map them to nan
                 data = np.where(data > 10, np.nan, data)
 
-            # converting the nodata values to nan to keep everything consistent
-            data = (
-                np.where(data == MODALITIES.NO_DATA_VAL[modality], np.nan, data)
-                if modality != "dynamic_world"
-                else data
-            )
+            # 对sentinel1替换无效值，防止零过多
+            if modality == "sentinel1":
+            # 对每个通道分别计算有效数据的均值，并将 -inf 替换为对应通道的均值
+                for i in range(data.shape[0]):  # 对每个通道
+                    channel_data = data[i]
+                    valid_mean = np.nanmean(channel_data[channel_data != MODALITIES.NO_DATA_VAL[modality]])
+                    data[i] = np.where(channel_data == MODALITIES.NO_DATA_VAL[modality], valid_mean, channel_data)
+            else:
+                data = (
+                    np.where(data == MODALITIES.NO_DATA_VAL[modality], np.nan, data)
+                    if modality != "dynamic_world"
+                    else data
+                )
 
             if MODALITIES.MODALITY_TASK[modality] in ["classification", "segmentation"]:
                 # remap nan values to -1

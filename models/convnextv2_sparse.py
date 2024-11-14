@@ -195,9 +195,9 @@ class SparseConvNeXtV2(nn.Module):
 
         mask = mask.unsqueeze(1).type_as(x)
         x *= 1.0 - mask
-
+        
         x = to_sparse(x)
-
+        
         # patch embedding
         if self.use_orig_stem:
             x = self.stem_orig(x)

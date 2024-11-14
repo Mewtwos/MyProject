@@ -1,1 +1,4 @@
 __pycache__/
+wandb/
+results/
+models/__pycache__

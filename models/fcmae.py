@@ -413,7 +413,6 @@ class FCMAE(nn.Module):
             loss_combined = sum(loss_list)
             return loss_combined, loss_dict, None, None
 
-
     
     def new_forward_encoder(self, imgs_dict: Dict[AnyStr, Tensor], mask_ratio: float):
         mask = self.gen_random_mask(imgs_dict["sentinel2"], mask_ratio)
@@ -423,14 +422,12 @@ class FCMAE(nn.Module):
         x2 = self.encoder(y, mask)  # sentinel1 随机选择4个通道拼接
         x3 = self.encoder(imgs_dict["aster"].repeat(1, 6, 1, 1), mask)
         x4 = self.encoder(imgs_dict["canopy_height_eth"].repeat(1, 6, 1, 1), mask)
-        x5 = self.encoder(imgs_dict["dynamic_world"].repeat(1, 12, 1, 1).type_as(x1), mask)
-        x6 = self.encoder(imgs_dict["esa_worldcover"].repeat(1, 12, 1, 1).type_as(x1), mask)
-        x = x1 + x2 + x3 + x4 + x5 + x6
+        x = x1 + x2 + x3 + x4 
         return x, mask
 
 
     def forward(
-        self, imgs_dict: Dict[AnyStr, Tensor], labels=None, mask_ratio: float = 0.6
+        self, imgs_dict: Dict[AnyStr, Tensor], mask_ratio: float = 0.6
     ):
 
         # apply random crop to all pixel-wise modalities
