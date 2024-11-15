@@ -18,7 +18,7 @@ from MinkowskiEngine import (
 from .convnextv2 import Block, ConvNeXtV2
 from .convnextv2_sparse import SparseConvNeXtV2
 from .norm_layers import LayerNorm
-from .newdecoder import MAE_Decoder
+from .mae_decoder import MAE_Decoder,HOGLayer
 
 # All rights reserved.
 # This source code is licensed under the license found in the
@@ -112,7 +112,7 @@ class FCMAE(nn.Module):
                 use_orig_stem=args.use_orig_stem,
             )
         # self.proj = nn.Conv2d(
-        #     in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
+        #     in_channels=dims[-1], out_channels=768, kernel_size=1
         # )
 
         # mask tokens
@@ -151,10 +151,26 @@ class FCMAE(nn.Module):
                 )
 
         #修改的代码都放在这
-        new_decoder = MAE_Decoder(inp_dim=self.decoder_embed_dim, embed_dim=256, num_patches=49, norm_layer=partial(nn.LayerNorm, eps=1e-6))
-        self.new_decoder_dict = nn.ModuleDict()
+        # new_decoder = MAE_Decoder(inp_dim=self.decoder_embed_dim, embed_dim=256, num_patches=49, norm_layer=partial(nn.LayerNorm, eps=1e-6))
+        # self.new_decoder_dict = nn.ModuleDict()
+        # for modality in self.args.out_modalities.keys():
+        #     self.new_decoder_dict[modality]=new_decoder
+        mae_decoder = MAE_Decoder(inp_dim=320, embed_dim=256, num_patches=49, norm_layer=partial(nn.LayerNorm, eps=1e-6))
+        self.mae_decoder_dict = nn.ModuleDict()
         for modality in self.args.out_modalities.keys():
-            self.new_decoder_dict[modality]=new_decoder
+            self.mae_decoder_dict[modality]=mae_decoder
+        self.hog_dict = nn.ModuleDict()
+        for modality in self.args.out_modalities.keys():
+            if modality in ["aster", "canopy_height_eth"]:
+                self.hog_dict[modality] = HOGLayer(nbins=12, pool=16, bias=False)
+            elif modality == "sentinel2":
+                self.hog_dict[modality] = HOGLayer(nbins=2, pool=16, bias=False)
+            elif modality == "sentinel1":
+                self.hog_dict[modality] = HOGLayer(nbins=3, pool=16, bias=False)
+        for hog_enc in self.hog_dict.values():
+            for param in hog_enc.parameters():
+                param.requires_grad = False
+
 
         self.apply(self._init_weights)
         self.random_crop = RandomCrop((img_size, img_size))
@@ -173,7 +189,8 @@ class FCMAE(nn.Module):
         if isinstance(m, nn.Conv2d):
             w = m.weight.data
             trunc_normal_(w.view([w.shape[0], -1]))
-            nn.init.constant_(m.bias, 0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
         if isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
@@ -255,7 +272,7 @@ class FCMAE(nn.Module):
 
     def forward_decoder(self, x: Tensor, mask: Tensor) -> Dict[AnyStr, Tensor]:
         pred = {}
-        # x = self.proj(x)
+        x = self.proj(x)
         n, c, h, w = x.shape
         mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)       
         mask_token = self.mask_token.repeat(x.shape[0], 1, x.shape[2], x.shape[3])# 可学习参数，用于填补空缺
@@ -418,6 +435,37 @@ class FCMAE(nn.Module):
             loss_combined = sum(loss_list)
             return loss_combined, loss_dict, None, None
 
+    
+    def HOG(self, imgs, modality):  
+        hog_list = []
+        for i in range(imgs.shape[1]):
+            hog_list.append(self.hog_dict[modality](imgs[:,i:i+1,:,:]))
+        hog_feat = torch.cat(hog_list, 1)
+        hog_feat = hog_feat.flatten(2, 3).transpose(1, 2)
+        return hog_feat
+    
+    def new_forward_loss(self, imgs_dict, preds, mask):
+        target = {}
+        loss = 0.
+        for modality in self.args.out_modalities.keys():
+            if modality not in ["dynamic_world", "esa_worldcover"]:
+                hog = self.HOG(imgs_dict[modality], modality)
+                target[modality] = hog
+                loss += (((preds[modality]-target[modality])**2).mean(dim=-1)*mask).sum()/mask.sum()
+        return loss
+
+    def new_forward_decoder2(self, x:Tensor, mask:Tensor):
+        n, c, h, w = x.shape
+        mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)       
+        mask_token = self.mask_token.repeat(x.shape[0], 1, x.shape[2], x.shape[3])# 可学习参数，用于填补空缺
+        x = x * (1.0 - mask) + mask_token * mask
+        x = x.reshape(x.shape[0], -1, x.shape[1]) #[b, 49, 320]
+        pred = {}
+        for modalities in self.args.out_modalities.keys():
+            x_ = self.mae_decoder_dict[modalities](x)
+            pred[modalities] = x_
+        return pred
+
 
     def new_forward_decoder(self, x:Tensor, mask: Tensor):
         pred = {}  # input x = [b, 320, 7, 7]
@@ -466,12 +514,15 @@ class FCMAE(nn.Module):
                 )
 
         x, mask = self.forward_encoder(imgs, mask_ratio)
-        pred = self.new_forward_decoder(x, mask)
-        loss, loss_dict, log_vars, normalized_loss_list = self.forward_loss(
-            imgs_dict, pred, mask
-        )
+        pred = self.new_forward_decoder2(x, mask)
+        loss = self.new_forward_loss(imgs_dict, pred, mask)
+        # loss, loss_dict, log_vars, normalized_loss_list = self.forward_loss(
+        #     imgs_dict, pred, mask
+        # )
+        loss_dict = {}
+        log_vars = None
+        normalized_loss_list = None
         return loss, pred, mask, loss_dict, log_vars, normalized_loss_list
-
 
 
 

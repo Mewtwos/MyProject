@@ -2,11 +2,11 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: -m torch.distributed.launch --nproc_per_node=1 main_pretrain.py --model convnextv2_atto --batch_size 256 --update_freq 2 --blr 1.5e-4 --epochs 200 --warmup_epochs 40 --data_dir ../MMearth100k --output_dir results/pt-all_mod_atto --wandb False --wandb_run_name \u590d\u73b0\u8bba\u6587\u7ed3\u679c --wandb_project MMearthPT --loss_aggr uncertainty --auto_resume False --norm_pix_loss True --num_workers 8 --patch_size 16 --input_size 112 --random_crop True --use_orig_stem False --save_ckpt True --no_ffcv True --distributed True --update_freq 4",
+            "name": "transformer_decoder",
             "type": "debugpy",
             "request": "launch",
             "program": "-m",
-            "env": {},
+            "env": {"CUDA_VISIBLE_DEVICES":"7"},
             "console": "integratedTerminal",
             "args": [
                 "torch.distributed.launch",
@@ -25,9 +25,9 @@
                 "--warmup_epochs",
                 "40",
                 "--data_dir",
-                "../MMearth100k",
+                "../mmearth100k",
                 "--output_dir",
-                "results/pt-all_mod_atto",
+                "results/pt-all_mod_atto_new",
                 "--wandb",
                 "False",
                 "--wandb_run_name",
@@ -55,9 +55,7 @@
                 "--no_ffcv",
                 "True",
                 "--distributed",
-                "True",
-                "--update_freq",
-                "4"
+                "False"
             ],
             "cwd": "/mnt/lpai-dione/ssai/cvg/workspace/nefu/lht/transformer_decoder"
         }

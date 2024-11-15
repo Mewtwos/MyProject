@@ -3,6 +3,7 @@ from torch import nn
 import torch
 from .pos_embed import get_2d_sincos_pos_embed
 
+
 class MAE_Decoder(nn.Module):
     def __init__(self, inp_dim, embed_dim=256, num_patches=49, depth=1, num_heads=8, mlp_ratio=4., qkv_bias=False, norm_layer=nn.LayerNorm):
         super().__init__()
@@ -12,7 +13,7 @@ class MAE_Decoder(nn.Module):
         self.blocks = nn.ModuleList([
             Block(embed_dim, num_heads, mlp_ratio, qkv_bias=qkv_bias, norm_layer=norm_layer) for _ in range(depth)])
         self.norm = norm_layer(embed_dim)
-
+        
         self.initialize_weights()
 
     def initialize_weights(self):

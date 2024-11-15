@@ -88,15 +88,15 @@ OUT_MODALITIES = {
     ],
     "sentinel1": "all",
     "aster": "all",
-    "era5": "all",
-    "dynamic_world": "all",
+    # "era5": "all",
+    # "dynamic_world": "all",
     "canopy_height_eth": "all",
-    "lat": "all",
-    "lon": "all",
-    "biome": "all",
-    "eco_region": "all",
-    "month": "all",
-    "esa_worldcover": "all",
+    # "lat": "all",
+    # "lon": "all",
+    # "biome": "all",
+    # "eco_region": "all",
+    # "month": "all",
+    # "esa_worldcover": "all",
 }
 
 
