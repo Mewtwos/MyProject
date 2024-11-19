@@ -800,7 +800,7 @@ def main(args: argparse.Namespace):
         if task.label_type.__class__ != SegmentationClasses:
             ckpt_file = 'checkpoint-99.pth'
         else:
-            ckpt_file = 'checkpoint-best.pth'
+            ckpt_file = 'checkpoint-199.pth'
 
         checkpoint = torch.load(
             os.path.join(args.output_dir, ckpt_file), map_location="cpu"
@@ -825,7 +825,7 @@ def main(args: argparse.Namespace):
             version=args.version,
             geobench_bands_type=args.geobench_bands_type,
             no_ffcv=args.no_ffcv,
-            
+
         )
 
         print('test_loader data shape:', next(iter(test_loader))[0].shape)
@@ -860,7 +860,9 @@ def main(args: argparse.Namespace):
                 write_str = f"test score: {test_score}, val_score: {max_accuracy}\n"
                 f.write(write_str)
 
-    wandb.finish()
+        if args.wandb: #上传测试集结果
+            wandb.log({"test_score": test_stats[key]})
+        wandb.finish()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
