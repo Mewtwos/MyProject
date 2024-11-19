@@ -92,12 +92,12 @@ class MMEarthDataset(Dataset):
                 modality_ = modality
 
             # 使用归一化的均值替换零值
-            if modality == "canopy_height_eth":
-                means = np.array(self.norm_stats[modality]["mean"])[modality_idx]
-                for i in range(data.shape[0]):  # 对每个通道
-                    channel_data = data[i]
-                    # 将所有零值替换为对应通道的归一化均值
-                    channel_data[channel_data == 0] = means[i]
+            # if modality == "canopy_height_eth":
+            #     means = np.array(self.norm_stats[modality]["mean"])[modality_idx]
+            #     for i in range(data.shape[0]):  # 对每个通道
+            #         channel_data = data[i]
+            #         # 将所有零值替换为对应通道的归一化均值
+            #         channel_data[channel_data == 0] = means[i]
 
             if modality not in [
                 "biome",
@@ -139,7 +139,10 @@ class MMEarthDataset(Dataset):
             # 对每个通道分别计算有效数据的均值，并将 -inf 替换为对应通道的均值
                 for i in range(data.shape[0]):  # 对每个通道
                     channel_data = data[i]
-                    valid_mean = np.nanmean(channel_data[channel_data != MODALITIES.NO_DATA_VAL[modality]])
+                    if np.any(channel_data[channel_data != MODALITIES.NO_DATA_VAL[modality]]):
+                        valid_mean = np.nanmean(channel_data[channel_data != MODALITIES.NO_DATA_VAL[modality]])
+                    else:
+                        valid_mean = 1e-4 
                     data[i] = np.where(channel_data == MODALITIES.NO_DATA_VAL[modality], valid_mean, channel_data)
             else:
                 data = (

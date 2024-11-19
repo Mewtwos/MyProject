@@ -17,6 +17,7 @@ from MinkowskiEngine import (
 from .convnextv2 import Block, ConvNeXtV2
 from .convnextv2_sparse import SparseConvNeXtV2
 from .norm_layers import LayerNorm
+from .sa import FVit
 
 
 # All rights reserved.
@@ -110,12 +111,12 @@ class FCMAE(nn.Module):
                 img_size=img_size,
                 use_orig_stem=args.use_orig_stem,
             )
-        self.proj = nn.Conv2d(
-            in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
-        )
+        # self.proj = nn.Conv2d(
+        #     in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
+        # )
 
         # mask tokens
-        self.mask_token = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
+        # self.mask_token = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
         decoder = [
             Block(dim=decoder_embed_dim, drop_path=0.0) for _ in range(decoder_depth)
         ]
@@ -148,7 +149,27 @@ class FCMAE(nn.Module):
                 self.pred_dict[modality] = nn.Linear(
                     in_features=decoder_embed_dim, out_features=self.out_chans[modality]
                 )
-
+        
+        #新增
+        self.fvit1 = FVit(num_head=8, hidden_size=512)
+        self.fvit2 = FVit(num_head=8, hidden_size=512)
+        self.fvit3 = FVit(num_head=8, hidden_size=512)
+        self.proj1 = nn.Conv2d(
+            in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
+        )
+        self.proj2 = nn.Conv2d(
+            in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
+        )
+        self.proj3 = nn.Conv2d(
+            in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
+        )
+        self.proj4 = nn.Conv2d(
+            in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
+        )
+        self.mask_token1 = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
+        self.mask_token2 = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
+        self.mask_token3 = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
+        self.mask_token4 = nn.Parameter(torch.zeros(1, decoder_embed_dim, 1, 1))
 
         self.apply(self._init_weights)
         self.random_crop = RandomCrop((img_size, img_size))
@@ -176,8 +197,6 @@ class FCMAE(nn.Module):
             nn.init.constant_(m.bias, 0)
         if hasattr(self, "mask_token"):   
             torch.nn.init.normal_(self.mask_token, std=0.02)
-        if hasattr(self, "latent_mask_token"):   
-            torch.nn.init.normal_(self.latent_mask_token, std=0.02)
 
     def patchify(self, imgs: Tensor, modality: str) -> Tensor:
         """
@@ -250,11 +269,11 @@ class FCMAE(nn.Module):
 
     def forward_decoder(self, x: Tensor, mask: Tensor) -> Dict[AnyStr, Tensor]:
         pred = {}
-        x = self.proj(x)
-        n, c, h, w = x.shape
-        mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)       
-        mask_token = self.mask_token.repeat(x.shape[0], 1, x.shape[2], x.shape[3])# 可学习参数，用于填补空缺
-        x = x * (1.0 - mask) + mask_token * mask
+        # x = self.proj(x)
+        # n, c, h, w = x.shape
+        # mask = mask.reshape(-1, h, w).unsqueeze(1).type_as(x)       
+        # mask_token = self.mask_token.repeat(x.shape[0], 1, x.shape[2], x.shape[3])# 可学习参数，用于填补空缺
+        # x = x * (1.0 - mask) + mask_token * mask
         for modalities in self.args.out_modalities.keys():
             # decoding
             x_ = self.decoder_dict[modalities](x)
@@ -422,8 +441,51 @@ class FCMAE(nn.Module):
         x2 = self.encoder(y, mask)  # sentinel1 随机选择4个通道拼接
         x3 = self.encoder(imgs_dict["aster"].repeat(1, 6, 1, 1), mask)
         x4 = self.encoder(imgs_dict["canopy_height_eth"].repeat(1, 6, 1, 1), mask)
+        assert x1.shape[0] == 256
+        assert x2.shape[0] == 256
+        assert x3.shape[0] == 256
+        assert x4.shape[0] == 256
         x = x1 + x2 + x3 + x4 
         return x, mask
+
+    def new_forward_encoder_fvit(self, imgs_dict: Dict[AnyStr, Tensor], mask_ratio: float):
+        mask = self.gen_random_mask(imgs_dict["sentinel2"], mask_ratio)
+        x1 = self.encoder(imgs_dict["sentinel2"], mask)
+        imgs = imgs_dict["sentinel1"]
+        y = torch.cat((imgs, imgs[:,torch.randperm(imgs.size(1))[:4]]), 1)
+        x2 = self.encoder(y, mask)  # sentinel1 随机选择4个通道拼接
+        x3 = self.encoder(imgs_dict["aster"].repeat(1, 6, 1, 1), mask)
+        x4 = self.encoder(imgs_dict["canopy_height_eth"].repeat(1, 6, 1, 1), mask)
+        assert x1.shape[0] == 256
+        assert x2.shape[0] == 256
+        assert x3.shape[0] == 256
+        assert x4.shape[0] == 256
+        #补全数据
+        x1 = self.proj1(x1)
+        x2 = self.proj2(x2)
+        x3 = self.proj3(x3)
+        x4 = self.proj4(x4)
+        n, c, h, w = x1.shape
+        mask_ = mask.reshape(-1, h, w).unsqueeze(1).type_as(x1)       
+        mask_token1 = self.mask_token1.repeat(x1.shape[0], 1, x1.shape[2], x1.shape[3])# 可学习参数，用于填补空缺
+        mask_token2 = self.mask_token2.repeat(x2.shape[0], 1, x2.shape[2], x2.shape[3])
+        mask_token3 = self.mask_token3.repeat(x3.shape[0], 1, x3.shape[2], x3.shape[3])
+        mask_token4 = self.mask_token4.repeat(x4.shape[0], 1, x4.shape[2], x4.shape[3])
+        x1 = x1 * (1.0 - mask_) + mask_token1 * mask_
+        x2 = x2 * (1.0 - mask_) + mask_token2 * mask_
+        x3 = x3 * (1.0 - mask_) + mask_token3 * mask_
+        x4 = x4 * (1.0 - mask_) + mask_token4 * mask_
+        x1 = x1.view(x1.shape[0], x1.shape[1], -1).permute(0, 2, 1)
+        x2 = x2.view(x2.shape[0], x2.shape[1], -1).permute(0, 2, 1)
+        x3 = x3.view(x3.shape[0], x3.shape[1], -1).permute(0, 2, 1)
+        x4 = x4.view(x4.shape[0], x4.shape[1], -1).permute(0, 2, 1)
+        #多模态融合
+        x1, x2 = self.fvit1(x1, x2)
+        x3, x4 = self.fvit2(x3, x4)
+        x12, x34 = self.fvit3(x1+x2, x3+x4)
+        fuse = x12 + x34
+        fuse = fuse.view(fuse.shape[0], 7, 7, -1).permute(0, 3, 1, 2)
+        return fuse, mask
 
 
     def forward(
@@ -455,7 +517,7 @@ class FCMAE(nn.Module):
                     imgs_dict[modality], nan=0.0, posinf=0.0, neginf=0.0
                 )
 
-        x, mask = self.new_forward_encoder(imgs_dict, mask_ratio)
+        x, mask = self.new_forward_encoder_fvit(imgs_dict, mask_ratio)
         pred = self.forward_decoder(x, mask)
         loss, loss_dict, log_vars, normalized_loss_list = self.forward_loss(
             imgs_dict, pred, mask
