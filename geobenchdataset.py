@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
+import random
 from typing import Tuple
-
+from ffcv.transforms import RandomHorizontalFlip
 import ffcv
 import geobench
 import numpy as np
@@ -118,6 +119,30 @@ class GeobenchDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
+    @classmethod
+    def data_augmentation(cls, *arrays, flip=True, mirror=True):
+        will_flip, will_mirror = False, False
+        if flip and random.random() < 0.5:
+            will_flip = True
+        if mirror and random.random() < 0.5:
+            will_mirror = True
+
+        results = []
+        for array in arrays:
+            if will_flip:
+                if len(array.shape) == 2:
+                    array = array[::-1, :]
+                else:
+                    array = array[:, ::-1, :]
+            if will_mirror:
+                if len(array.shape) == 2:
+                    array = array[:, ::-1]
+                else:
+                    array = array[:, :, ::-1]
+            results.append(np.copy(array))
+
+        return tuple(results)
+    
     def __getitem__(self, idx):
 
         label = self.dataset[idx].label
@@ -151,8 +176,10 @@ class GeobenchDataset(Dataset):
             # label is a memoryview object, convert it to a list, and then to a numpy array
             label = np.array(list(label), dtype=np.dtype("int64"))
 
-        if self.transform is not None:
-            self.transform(x)
+        # if self.transform is not None:
+        #     self.transform(x)
+        x, label = self.data_augmentation(x, label)
+        label = label[None, :, :]
 
         return x, label, mean, std
 
@@ -169,6 +196,7 @@ def get_geobench_dataloaders(
     distributed: bool = False,
     version: str = "1.0",
     geobench_bands_type: str = "full",
+    transform = None
 ) -> Tuple[list[ffcv.Loader], TaskSpecifications]:
     """
     Creates and returns data loaders for the GeobenchDataset dataset. If the processed beton file does not exist,
@@ -262,7 +290,7 @@ def get_geobench_dataloaders(
                 print(
                     f"Skipping creation of beton file {beton_file} as no_ffcv is set to True."
                 )
-            transform = None
+
             dataset = GeobenchDataset(
                 dataset_name=dataset_name,
                 split=split,
@@ -300,8 +328,11 @@ def get_geobench_dataloaders(
 
         # Data decoding and augmentation
         # Pipeline for each data field
+        # random_flip = RandomHorizontalFlip()  # 定义随机翻转增强
         pipelines = {
-            "input": [NDArrayDecoder(), ToTensor()],
+            "input": [NDArrayDecoder(),
+                    #    random_flip, 
+                       ToTensor()],
         }
         # get correct decoder for task
         if isinstance(
@@ -312,6 +343,7 @@ def get_geobench_dataloaders(
                 {
                     "label": [
                         NDArrayDecoder(),
+                        # random_flip,
                         ToTensor(),
                     ],
                 }

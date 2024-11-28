@@ -36,7 +36,7 @@ from geobench.label import Classification, MultiLabelClassification
 from helpers import NativeScalerWithGradNormCount as NativeScaler
 from helpers import str2bool, remap_checkpoint_keys, load_custom_checkpoint
 from optim_factory import create_optimizer, LayerDecayValueAssigner
-
+from torchvision import transforms
 
 
 def get_args_parser():
@@ -422,6 +422,7 @@ def main(args: argparse.Namespace):
     processed_dir = args.processed_dir
     if processed_dir is None:
         processed_dir = GEO_BENCH_DIR
+    transform = None
     (train_dataloader, val_dataloader), task = get_geobench_dataloaders(
         args.data_set,
         processed_dir,
@@ -433,6 +434,7 @@ def main(args: argparse.Namespace):
         version=args.version,
         geobench_bands_type=args.geobench_bands_type,
         no_ffcv=args.no_ffcv,
+        transform=transform
     )
     num_classes = task.label_type.n_classes
     # in_channels = len(task.band_stats) - 1 # without label
@@ -708,7 +710,10 @@ def main(args: argparse.Namespace):
         
         # validation        
         if val_dataloader is not None:
-            val_samples = val_dataloader.reader.num_samples
+            if args.no_ffcv:
+                val_samples = len(val_dataloader.dataset)
+            else:
+                val_samples = val_dataloader.reader.num_samples
             test_stats = evaluate(
                 val_dataloader, model, device, use_amp=args.use_amp, args=args, task=task
             )
@@ -833,7 +838,10 @@ def main(args: argparse.Namespace):
         test_stats = evaluate(
             test_loader, model, device, use_amp=args.use_amp, args=args, task=task
         )
-        test_samples = test_loader.reader.num_samples
+        if args.no_ffcv:
+            test_samples = len(test_loader.dataset)
+        else:
+            test_samples = test_loader.reader.num_samples
         key = [k for k in test_stats.keys() if k != 'loss'][0]
         print(f"Final test set - {test_samples} samples, score: {test_stats[key]:.3f}")
         test_score = test_stats[key]

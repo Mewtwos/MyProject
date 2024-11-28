@@ -166,7 +166,7 @@ def create_optimizer(
         parameters = get_parameter_groups(
             model, weight_decay, skip, get_num_layer, get_layer_scale
         )
-        weight_decay = 0.0
+        # weight_decay = 0.0
     else:
         parameters = model.parameters()
 

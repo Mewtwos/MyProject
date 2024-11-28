@@ -665,9 +665,9 @@ def adjust_learning_rate(optimizer, epoch, args):
     return lr
 
 
-def remap_checkpoint_keys(ckpt):
+def remap_checkpoint_keys(ckpt): 
     new_ckpt = OrderedDict()
-    for k, v in ckpt.items():
+    for k, v in ckpt.items():   #改预训练模型中一些参数的名字，因为convnext_unet里没有encoder等等这些名字
         if k.startswith("encoder"):
             k = ".".join(k.split(".")[1:])  # remove encoder in the name
         if k.endswith("kernel"):
@@ -869,12 +869,12 @@ def load_custom_checkpoint(model, args):
 
     elif args.linear_probe: # linear probe
         # we still start with the same fine-tuning pre-trained model, and then remove the head. we then make the model frozen, and add a new head for linear probe
-        checkpoint = torch.load(args.finetune, map_location="cpu")
+        checkpoint = torch.load(args.finetune, map_location="cpu")#加载预训练模型
 
         print("Load pre-trained checkpoint from: %s" % args.finetune)
         checkpoint_model = checkpoint["model"] if "model" in checkpoint else checkpoint
         state_dict = model.state_dict()
-        for k in ["head.weight", "head.bias"]:
+        for k in ["head.weight", "head.bias"]:  #去掉加载的模型的头
             if (
                 k in checkpoint_model
                 and checkpoint_model[k].shape != state_dict[k].shape
