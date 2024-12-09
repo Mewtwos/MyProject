@@ -878,6 +878,8 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
+    from custom_repr import enable_custom_repr
+    enable_custom_repr()
     parser = argparse.ArgumentParser("FCMAE fine-tuning", parents=[get_args_parser()])
     args = parser.parse_args()
     if args.output_dir:
