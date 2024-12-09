@@ -17,7 +17,7 @@ from MinkowskiEngine import (
 from .convnextv2 import Block, ConvNeXtV2
 from .convnextv2_sparse import SparseConvNeXtV2
 from .norm_layers import LayerNorm
-from .sa import FVit
+from .sa import FVit, SEFusion
 
 
 # All rights reserved.
@@ -154,6 +154,9 @@ class FCMAE(nn.Module):
         self.fvit1 = FVit(num_head=8, hidden_size=512)
         self.fvit2 = FVit(num_head=8, hidden_size=512)
         self.fvit3 = FVit(num_head=8, hidden_size=512)
+        # self.sff1 = SEFusion(256, activation=nn.GELU())
+        # self.sff2 = SEFusion(256, activation=nn.GELU())
+        # self.sff3 = SEFusion(256, activation=nn.GELU())
         self.proj1 = nn.Conv2d(
             in_channels=dims[-1], out_channels=decoder_embed_dim, kernel_size=1
         )
@@ -484,7 +487,8 @@ class FCMAE(nn.Module):
         x3, x4 = self.fvit2(x3, x4)
         x12, x34 = self.fvit3(x1+x2, x3+x4)
         fuse = x12 + x34
-        fuse = fuse.view(fuse.shape[0], 7, 7, -1).permute(0, 3, 1, 2)
+        fuse = fuse.contiguous().view(fuse.shape[0], 7, 7, -1).permute(0, 3, 1, 2)
+
         return fuse, mask
 
 

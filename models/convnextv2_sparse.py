@@ -19,6 +19,7 @@ from MinkowskiEngine import (
     MinkowskiDepthwiseConvolution,
     MinkowskiLinear,
     MinkowskiGELU,
+    MinkowskiSyncBatchNorm
 )
 from .sparse_norm_layers import MinkowskiLayerNorm, MinkowskiGRN, MinkowskiDropPath
 
@@ -37,7 +38,8 @@ class Block(nn.Module):
         self.dwconv = MinkowskiDepthwiseConvolution(
             dim, kernel_size=7, bias=True, dimension=D
         )
-        self.norm = MinkowskiLayerNorm(dim, 1e-6)
+        # self.norm = MinkowskiLayerNorm(dim, 1e-6)
+        self.norm = MinkowskiSyncBatchNorm(dim)
         self.pwconv1 = MinkowskiLinear(dim, 4 * dim)
         self.act = MinkowskiGELU()
         self.pwconv2 = MinkowskiLinear(4 * dim, dim)
@@ -114,7 +116,8 @@ class SparseConvNeXtV2(nn.Module):
                 MinkowskiConvolution(
                     in_chans, dims[0], kernel_size=3, stride=1, bias=True, dimension=D
                 ),
-                MinkowskiLayerNorm(dims[0], eps=1e-6),
+                # MinkowskiLayerNorm(dims[0], eps=1e-6),
+                MinkowskiSyncBatchNorm(dims[0]),
                 MinkowskiGELU(),
             )
             # our version of the stem downsampling: includes depthwise_conv + layer norm
@@ -126,7 +129,8 @@ class SparseConvNeXtV2(nn.Module):
                     bias=True,
                     dimension=D,
                 ),
-                MinkowskiLayerNorm(dims[0], eps=1e-6),
+                # MinkowskiLayerNorm(dims[0], eps=1e-6),
+                MinkowskiSyncBatchNorm(dims[0]),
             )
 
         """
@@ -139,7 +143,8 @@ class SparseConvNeXtV2(nn.Module):
 
         for i in range(3):
             downsample_layer = nn.Sequential(
-                MinkowskiLayerNorm(dims[i], eps=1e-6),
+                # MinkowskiLayerNorm(dims[i], eps=1e-6),
+                MinkowskiSyncBatchNorm(dims[i]),
                 MinkowskiConvolution(
                     dims[i],
                     dims[i + 1],
